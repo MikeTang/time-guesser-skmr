@@ -207,32 +207,27 @@ function WaitingScreen({
   const clouds = useRef<CloudSpec[]>(makeCloudSpecs(option.cloudColors));
 
   // Record start time in sessionStorage on mount.
-  // If we somehow already have a start (e.g. hot reload), respect it so
-  // the timer isn't reset. Edge case: stale key from a prior session —
-  // guard by checking that the stored target matches.
+  // If we somehow already have a start time (e.g. hot-reload), keep it.
   useEffect(() => {
-    const storedTarget = sessionStorage.getItem(SS_TARGET);
-    if (storedTarget !== String(option.minutes)) {
-      // Fresh game — write a new start time
-      sessionStorage.setItem(SS_START, String(Date.now()));
-      sessionStorage.setItem(SS_TARGET, String(option.minutes));
-    } else if (!sessionStorage.getItem(SS_START)) {
+    const existing = sessionStorage.getItem(SS_START);
+    if (!existing) {
       sessionStorage.setItem(SS_START, String(Date.now()));
     }
+    sessionStorage.setItem(SS_TARGET, String(option.minutes));
   }, [option.minutes]);
 
   function handleStop() {
     const raw = sessionStorage.getItem(SS_START);
-    const startTime = raw ? parseInt(raw, 10) : Date.now();
-    const elapsedMs = Date.now() - startTime;
-    const targetMs = option.minutes * 60 * 1000;
-    const secondsOff = Math.round(Math.abs(elapsedMs - targetMs) / 1000);
+    const start = raw ? Number(raw) : Date.now();
+    const target = option.minutes * 60 * 1000;
+    const elapsed = Date.now() - start;
+    const diffMs = Math.abs(elapsed - target);
+    const diffSec = Math.round(diffMs / 1000);
 
-    // Clean up so a future game starts fresh
     sessionStorage.removeItem(SS_START);
     sessionStorage.removeItem(SS_TARGET);
 
-    onStop(secondsOff);
+    onStop(diffSec);
   }
 
   return (
@@ -308,89 +303,222 @@ function WaitingScreen({
   );
 }
 
-/* ─── Result screen (stub for wiring) ───────────────────── */
-function ResultScreen({
-  minutes,
-  secondsOff,
-  onPlayAgain,
-}: {
-  minutes: number;
-  secondsOff: number;
-  onPlayAgain: () => void;
-}) {
-  const { emoji, message, sub } = getResultFeedback(secondsOff);
+/* ─── Confetti burst (canvas, under-10s only) ────────────── */
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  size: number;
+  rotation: number;
+  rotationSpeed: number;
+  opacity: number;
+}
+
+const CONFETTI_COLORS = [
+  "#f59e0b", "#a855f7", "#ec4899", "#6366f1",
+  "#38bdf8", "#34d399", "#fb923c", "#fbbf24",
+];
+
+function ConfettiBurst() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Spawn particles from the center-top area
+    const cx = canvas.width / 2;
+    const cy = canvas.height * 0.35;
+
+    const particles: Particle[] = [];
+    for (let i = 0; i < 90; i++) {
+      const angle = (Math.random() * Math.PI * 2);
+      const speed = Math.random() * 8 + 3;
+      particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 4, // bias upward
+        color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+        size: Math.random() * 8 + 5,
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.25,
+        opacity: 1,
+      });
+    }
+
+    let animId: number;
+    let elapsed = 0;
+    const MAX_FRAMES = 90; // ~1.5s at 60fps
+
+    function draw() {
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      elapsed++;
+
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.35; // gravity
+        p.vx *= 0.99; // slight drag
+        p.rotation += p.rotationSpeed;
+        p.opacity = Math.max(0, 1 - elapsed / MAX_FRAMES);
+
+        ctx.save();
+        ctx.globalAlpha = p.opacity;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        ctx.restore();
+      }
+
+      if (elapsed < MAX_FRAMES) {
+        animId = requestAnimationFrame(draw);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    animId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   return (
-    <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center w-full max-w-sm">
-      <div className="text-6xl mb-1">🏁</div>
-      <h2 className="text-4xl font-black text-white drop-shadow-lg">
-        {minutes} {minutes === 1 ? "Minute" : "Minutes"}
-      </h2>
-
-      <div
-        className="rounded-3xl p-6 text-center shadow-2xl w-full"
-        style={{
-          background: "rgba(255,255,255,0.08)",
-          border: "1px solid rgba(255,255,255,0.15)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div className="text-5xl mb-3">{emoji}</div>
-        <p className="text-white text-2xl font-black">{message}</p>
-        <p className="text-purple-200 text-base font-bold mt-1">
-          You were{" "}
-          <span className="text-yellow-300 text-xl">{secondsOff} second{secondsOff !== 1 ? "s" : ""}</span>{" "}
-          off!
-        </p>
-        <p className="text-purple-300 text-sm mt-3">{sub}</p>
-        <button
-          onClick={onPlayAgain}
-          className="mt-5 stop-btn rounded-2xl px-8 py-3 text-lg font-black text-white shadow-lg"
-          style={{
-            background: "linear-gradient(135deg,#a855f7,#6366f1)",
-          }}
-        >
-          Play Again 🚀
-        </button>
-      </div>
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="fixed inset-0 pointer-events-none z-50"
+      aria-hidden="true"
+    />
   );
 }
 
+/* ─── Result feedback tiers ──────────────────────────────── */
 function getResultFeedback(secondsOff: number): {
   emoji: string;
   message: string;
   sub: string;
+  showConfetti: boolean;
 } {
-  if (secondsOff <= 3)
+  if (secondsOff < 10)
     return {
-      emoji: "🌟",
-      message: "Perfect!",
-      sub: "You're basically a human clock! ⏰",
-    };
-  if (secondsOff <= 10)
-    return {
-      emoji: "🚀",
+      emoji: "🎯",
       message: "So close!",
-      sub: "Amazing time sense — keep it up! 🎉",
+      sub: "You're basically a human clock! ⏰",
+      showConfetti: true,
     };
   if (secondsOff <= 30)
     return {
-      emoji: "😊",
+      emoji: "😄",
       message: "Pretty good!",
       sub: "A little more practice and you'll nail it! 💪",
-    };
-  if (secondsOff <= 60)
-    return {
-      emoji: "🌈",
-      message: "Getting there!",
-      sub: "Time is tricky — give it another go! ✨",
+      showConfetti: false,
     };
   return {
-    emoji: "🪐",
-    message: "Keep trying!",
+    emoji: "🙂",
+    message: "Keep practicing!",
     sub: "Even astronauts need practice! 🛸",
+    showConfetti: false,
   };
+}
+
+/* ─── Result screen ──────────────────────────────────────── */
+function ResultScreen({
+  minutes,
+  secondsOff,
+  onTryAgain,
+  onNewTime,
+}: {
+  minutes: number;
+  secondsOff: number;
+  onTryAgain: () => void;
+  onNewTime: () => void;
+}) {
+  const { emoji, message, sub, showConfetti } = getResultFeedback(secondsOff);
+
+  return (
+    <>
+      {showConfetti && <ConfettiBurst />}
+
+      <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center w-full max-w-sm">
+        {/* Seconds off — big display */}
+        <div className="flex flex-col items-center gap-1">
+          <div
+            className="text-8xl font-black leading-none"
+            style={{
+              color: "#fde68a",
+              textShadow: "0 0 32px rgba(253,230,138,0.5)",
+              fontFamily: "'Nunito', sans-serif",
+            }}
+          >
+            {secondsOff}
+          </div>
+          <div className="text-2xl font-black text-white opacity-80">
+            {secondsOff === 1 ? "second" : "seconds"} off
+          </div>
+        </div>
+
+        {/* Feedback card */}
+        <div
+          className="rounded-3xl p-6 text-center shadow-2xl w-full"
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div className="text-5xl mb-3">{emoji}</div>
+          <p
+            className="text-white text-2xl font-black"
+            style={{ fontFamily: "'Nunito', sans-serif" }}
+          >
+            {message}
+          </p>
+          <p
+            className="text-purple-200 text-base font-bold mt-2"
+            style={{ fontFamily: "'Nunito', sans-serif" }}
+          >
+            {sub}
+          </p>
+
+          {/* Two action buttons */}
+          <div className="mt-5 flex flex-col gap-3">
+            <button
+              onClick={onTryAgain}
+              className="stop-btn w-full rounded-2xl py-4 text-lg font-black text-white shadow-lg focus:outline-none"
+              style={{
+                background: "linear-gradient(135deg,#a855f7,#6366f1)",
+                fontFamily: "'Nunito', sans-serif",
+              }}
+            >
+              Try Again ⏱️ {minutes} {minutes === 1 ? "min" : "min"}
+            </button>
+
+            <button
+              onClick={onNewTime}
+              className="time-card w-full rounded-2xl py-4 text-lg font-black shadow-lg focus:outline-none"
+              style={{
+                background: "rgba(255,255,255,0.10)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                color: "rgba(255,255,255,0.85)",
+                fontFamily: "'Nunito', sans-serif",
+              }}
+            >
+              New Time 🚀
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 /* ─── Root page ──────────────────────────────────────────── */
@@ -414,9 +542,20 @@ export default function Home() {
     setScreen("result");
   }
 
-  function handlePlayAgain() {
+  /** Same time — restart the timer with the current choice */
+  function handleTryAgain() {
+    setSecondsOff(null);
+    // Clear any leftover session key so the waiting screen starts fresh
+    sessionStorage.removeItem(SS_START);
+    setScreen("waiting");
+  }
+
+  /** Go back to the time picker */
+  function handleNewTime() {
     setChosenMinutes(null);
     setSecondsOff(null);
+    sessionStorage.removeItem(SS_START);
+    sessionStorage.removeItem(SS_TARGET);
     setScreen("pick");
   }
 
@@ -474,7 +613,10 @@ export default function Home() {
             ))}
           </div>
 
-          <p className="text-purple-300 text-sm font-bold mt-2">
+          <p
+            className="text-purple-300 text-sm font-bold"
+            style={{ fontFamily: "'Nunito', sans-serif" }}
+          >
             No peeking at the clock! 🌟
           </p>
         </div>
@@ -487,7 +629,8 @@ export default function Home() {
           <ResultScreen
             minutes={chosenOption.minutes}
             secondsOff={secondsOff}
-            onPlayAgain={handlePlayAgain}
+            onTryAgain={handleTryAgain}
+            onNewTime={handleNewTime}
           />
         )}
     </div>
