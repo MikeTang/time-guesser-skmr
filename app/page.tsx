@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSounds } from "./useSounds";
 
 /* ─── sessionStorage keys ────────────────────────────────── */
 const SS_START = "tg_startTime";
@@ -205,6 +206,7 @@ function WaitingScreen({
   onStop: (secondsOff: number) => void;
 }) {
   const clouds = useRef<CloudSpec[]>(makeCloudSpecs(option.cloudColors));
+  const { playStop } = useSounds();
 
   // Record start time in sessionStorage on mount.
   // If we somehow already have a start time (e.g. hot-reload), keep it.
@@ -227,6 +229,7 @@ function WaitingScreen({
     sessionStorage.removeItem(SS_START);
     sessionStorage.removeItem(SS_TARGET);
 
+    playStop();
     onStop(diffSec);
   }
 
@@ -443,6 +446,12 @@ function ResultScreen({
   onNewTime: () => void;
 }) {
   const { emoji, message, sub, showConfetti } = getResultFeedback(secondsOff);
+  const { playCelebration } = useSounds();
+
+  useEffect(() => {
+    if (secondsOff < 10) playCelebration();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
