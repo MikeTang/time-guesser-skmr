@@ -1,1 +1,82 @@
 @import "tailwindcss";
+
+/* ── Galaxy background ── */
+.galaxy {
+  font-family: 'Nunito', sans-serif;
+  background: radial-gradient(ellipse at 60% 40%, #1a0533 0%, #0a0a2e 50%, #000010 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Twinkling stars ── */
+.stars {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.star {
+  position: absolute;
+  background: white;
+  border-radius: 50%;
+  animation: twinkle var(--dur) ease-in-out infinite;
+  opacity: 0;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0;   transform: scale(0.8); }
+  50%       { opacity: var(--max-op); transform: scale(1.2); }
+}
+
+/* ── Nebula blobs ── */
+.nebula {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  opacity: 0.18;
+}
+
+/* ── Shooting star ── */
+.shooting {
+  position: absolute;
+  width: 120px;
+  height: 2px;
+  background: linear-gradient(to right, transparent, white);
+  border-radius: 999px;
+  top: 18%;
+  left: -10%;
+  animation: shoot 5s ease-in-out infinite 2s;
+  opacity: 0;
+}
+
+@keyframes shoot {
+  0%   { opacity: 0; transform: translateX(0) rotate(-20deg); }
+  10%  { opacity: 1; }
+  40%  { opacity: 0; transform: translateX(110vw) rotate(-20deg); }
+  100% { opacity: 0; transform: translateX(110vw) rotate(-20deg); }
+}
+
+/* ── Time card bounce ── */
+@keyframes card-bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(0.93); }
+  60%  { transform: scale(1.08); }
+  80%  { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.card-bounce {
+  animation: card-bounce 0.4s ease-out forwards;
+}
+
+/* ── Time card hover/active ── */
+.time-card {
+  transition: transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.time-card:hover {
+  transform: scale(1.05);
+}
